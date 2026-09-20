@@ -35,7 +35,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--event", type=Path, required=True, help="Path to an issues event JSON file"
     )
 
-    subparsers.add_parser("status", help="Print the current run report as JSON")
+    status_parser = subparsers.add_parser(
+        "status", help="Print the current run report as JSON"
+    )
+    status_parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Poll Devin for in-flight sessions before printing",
+    )
     return parser
 
 
@@ -73,6 +80,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "simulate":
         return simulate_event(orchestrator, args.event, settings.trigger_label)
     if args.command == "status":
+        if args.refresh:
+            orchestrator.refresh_open_runs()
         report = build_dashboard_report(orchestrator.list_runs())
         print(json.dumps(report, indent=2))
         return 0

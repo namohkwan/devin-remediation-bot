@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import app.cli as cli
+from app.adapters.devin_client import DevinSession
 from app.config import load_settings
 from app.core.orchestrator import Orchestrator
 from app.store.sqlite_store import SQLiteRemediationStore
@@ -77,3 +78,29 @@ def test_status_command_prints_report(monkeypatch, capsys, store) -> None:
     report = json.loads(capsys.readouterr().out)
     assert report["total"] == 1
     assert report["counts"]["running"] == 1
+
+
+def test_status_refresh_polls_devin(monkeypatch, capsys, store) -> None:
+    devin_client = FakeDevinClient(
+        poll_session=DevinSession(
+            session_id="devin-session-1",
+            status_enum="finished",
+            structured_output={
+                "pr_url": "https://github.com/namohkwan/superset/pull/7",
+                "result": "pass",
+            },
+        )
+    )
+    orchestrator = Orchestrator(
+        FakeGitHubClient(), devin_client, store, TEST_ENV["TARGET_REPO"]
+    )
+    patch_cli(monkeypatch, orchestrator)
+    orchestrator.run_for_issue(101)
+    capsys.readouterr()
+
+    exit_code = cli.main(["status", "--refresh"])
+
+    assert exit_code == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["counts"]["succeeded"] == 1
+    assert report["runs"][0]["pr_url"].endswith("/pull/7")

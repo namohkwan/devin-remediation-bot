@@ -117,9 +117,12 @@ python -m app.cli simulate --event samples/labeled_event.json
 
 # Inspect all recorded runs as JSON
 python -m app.cli status
+
+# Poll Devin for in-flight sessions first, then print
+python -m app.cli status --refresh
 ```
 
-`run` prints the persisted run, including the Devin `session_id` and session URL. Re-run `status` (or open `/status`) to watch the session progress to `succeeded`/`failed` with its `pr_url`.
+`run` returns as soon as the Devin session is created, printing the persisted run with its `session_id` and session URL. The outcome (`pr_url`, `result`) arrives later: re-run `status --refresh`, or open `/status`, where the background poller updates runs automatically.
 
 ## Webhook mode
 
