@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
@@ -19,7 +20,7 @@ router = APIRouter(tags=["webhook"])
 SIGNATURE_PREFIX = "sha256="
 
 
-def verify_signature(payload: bytes, signature_header: str | None, secret: str) -> bool:
+def verify_signature(payload: bytes, signature_header: Optional[str], secret: str) -> bool:
     """Validate the ``X-Hub-Signature-256`` header against ``payload``."""
     if not signature_header or not signature_header.startswith(SIGNATURE_PREFIX):
         return False
@@ -30,8 +31,8 @@ def verify_signature(payload: bytes, signature_header: str | None, secret: str) 
 @router.post("/webhook")
 async def github_webhook(
     request: Request,
-    x_hub_signature_256: str | None = Header(default=None),
-    x_github_event: str | None = Header(default=None),
+    x_hub_signature_256: Optional[str] = Header(default=None),
+    x_github_event: Optional[str] = Header(default=None),
     settings: Settings = Depends(get_settings),
     orchestrator: Orchestrator = Depends(get_orchestrator),
 ) -> dict[str, object]:
