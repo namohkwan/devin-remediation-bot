@@ -145,6 +145,16 @@ Register the webhook in `namohkwan/superset` → **Settings → Webhooks → Add
 
 Adding the `devin-fix` label to an issue sends an `issues`/`labeled` event; the bot verifies the signature and starts a Devin session. Every other action, label, and event type is ignored.
 
+### Why a human-triaged label, not every new issue
+
+The webhook deliberately triggers on `labeled` rather than `opened`, so a person decides which issues the bot picks up:
+
+- **Explicit approval boundary.** Whether an issue is safe to automate depends on context the payload does not carry — priority, security impact, release timing, and whether the reported behavior is even a bug. The label records that judgement, and GitHub's issue timeline shows who granted it and when.
+- **Cost and noise control.** Starting a session for every new issue spends Devin time on duplicates, questions, and support requests. The label keeps sessions proportional to issues actually worth automating.
+- **Scoped to work Devin does well.** Self-contained fixes (dependency bumps, small refactors, well-specified bugs) succeed far more often than open-ended design work; a human filter keeps the success rate — and reviewer trust — high.
+
+Automated triage is a natural extension: handle `action == "opened"`, run a classification prompt first, and have Devin *suggest* labels while a person still approves the remediation. That inverts the trust model, so it belongs after the label-gated flow has a track record.
+
 ## Docker
 
 ```bash
