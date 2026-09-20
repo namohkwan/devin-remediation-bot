@@ -2,12 +2,12 @@
 
 Event-driven automation that remediates GitHub issues in [`namohkwan/superset`](https://github.com/namohkwan/superset) with the [Devin API](https://docs.devin.ai/api-reference/overview).
 
-Two trigger modes share the exact same orchestration logic, so issues can be validated one at a time before any automation is switched on:
+A labelled issue becomes a Devin session, the session becomes a pull request, and every run is tracked until it reaches a terminal state. Two entry points exist, and both execute the same orchestration path:
 
-| Mode | Entry point | Use |
+| Mode | Entry point | Typical use |
 | --- | --- | --- |
-| Manual / simulation | `python -m app.cli run --issue <n>` | Incremental validation of a single issue |
-| Webhook | `POST /webhook` | GitHub `issues` event with the `devin-fix` label |
+| Manual / simulation | `python -m app.cli run --issue <n>` | Driving one issue at a time, and rehearsing webhook payloads offline |
+| Webhook | `POST /webhook` | Production trigger: an `issues` event carrying the `devin-fix` label |
 
 ## Architecture
 
@@ -39,11 +39,11 @@ Flow: a trigger passes an issue number to the orchestrator → the GitHub adapte
 
 Dependencies flow in one direction: **presentation → core → adapters / store**.
 
-- `app/api/` and `app/cli.py` call only `app/core/orchestrator.py`. They never touch adapters or the store directly.
-- `app/core/orchestrator.py` receives the GitHub adapter, the Devin adapter, and the store through constructor injection, so both trigger modes execute identical logic and tests can inject fakes.
-- `app/adapters/` performs external HTTP calls only. A change to the Devin or GitHub API surface is absorbed here alone.
-- `app/store/` persists data behind the `RemediationStore` interface; the SQLite backend can be swapped without changes elsewhere.
-- `app/config.py` is the only module that reads environment variables.
+- `app/api/` and `app/cli.py` talk to `app/core/orchestrator.py` and nothing else, which is what keeps the two trigger modes from drifting apart.
+- The orchestrator receives its adapters and store through constructor injection, so tests substitute fakes without patching module globals.
+- `app/adapters/` performs external HTTP calls only, confining Devin and GitHub API changes to a single package.
+- `app/store/` persists runs behind the `RemediationStore` interface; SQLite is an implementation detail, not a dependency of the core.
+- `app/config.py` is the only module that reads the environment.
 
 ### Folder structure
 
@@ -78,9 +78,9 @@ samples/labeled_event.json
 - The root `.gitignore` excludes `.env`, `*.env`, `.env.local`, `*.db`, and `__pycache__/`. `.env.example` contains placeholders only.
 - Secrets are never logged. `Settings.describe()` returns a redacted view (`***configured***`) and is what startup logging and the dashboard use.
 - `/webhook` verifies the `X-Hub-Signature-256` HMAC with `GITHUB_WEBHOOK_SECRET` and rejects unsigned or forged deliveries with `401`.
-- Do not display real keys on screen during demos or recordings. If a key is ever exposed, revoke and reissue it immediately: Devin API keys at https://app.devin.ai/settings/api-keys, GitHub tokens at https://github.com/settings/tokens, and regenerate the webhook secret in the repository webhook settings.
+- If a credential is ever exposed, revoke and reissue it immediately: Devin API keys at https://app.devin.ai/settings/api-keys, GitHub tokens at https://github.com/settings/tokens, and the webhook secret in the repository's webhook settings.
 
-## How to obtain keys
+## Credentials
 
 | Variable | Where to get it |
 | --- | --- |
@@ -106,7 +106,7 @@ Missing or blank required variables abort startup with an explicit message:
 Configuration error: Missing required environment variable(s): DEVIN_API_KEY, ...
 ```
 
-## Manual mode — validating issues one at a time
+## Manual mode
 
 ```bash
 # Remediate a single issue end to end
@@ -129,6 +129,8 @@ python -m app.cli watch --issue 1
 `run` returns as soon as the Devin session is created, printing the persisted run with its `session_id` and session URL. The outcome (`pr_url`, `result`) arrives later: re-run `status --refresh`, follow it live with `watch`, or open `/status`, where the background poller updates runs automatically.
 
 `watch` polls on the given interval and prints a timestamped line whenever a run changes, exiting once all watched runs have succeeded or failed (exit code 1 if any failed).
+
+Run statuses are `pending`, `running`, `awaiting_input` (Devin is blocked on a reply — the session is alive and its pull request, if any, is already recorded), `succeeded`, and `failed`.
 
 ## Webhook mode
 
@@ -170,12 +172,12 @@ docker compose up --build
 - `GET /poll` — refreshes in-flight sessions and returns the same report as JSON.
 - `GET /healthz` — liveness probe.
 
-## Devin API contract
+## Devin integration
 
-- `create_session(prompt)` → `POST https://api.devin.ai/v1/sessions` with `Authorization: Bearer $DEVIN_API_KEY` and body `{"prompt": ..., "idempotent": true}`.
-- `get_session(session_id)` → `GET https://api.devin.ai/v1/session/{session_id}`, reading `status_enum` and `structured_output`.
+- `create_session(prompt)` → `POST https://api.devin.ai/v1/sessions` with `Authorization: Bearer $DEVIN_API_KEY` and body `{"prompt": ..., "idempotent": true}`. The idempotency flag means a repeated trigger for the same issue rejoins the existing session instead of duplicating work.
+- `get_session(session_id)` → `GET https://api.devin.ai/v1/session/{session_id}`, read for `status_enum`, any attached pull request, and `structured_output`.
 
-The prompt instructs Devin to work in `namohkwan/superset`, implement the fix, run the relevant tests and lint checks, open a pull request titled `Fix #<issue_number>`, and write `{"pr_url": ..., "result": "pass|fail"}` into `structured_output`. A terminal session with `result == "pass"` marks the run succeeded; anything else marks it failed.
+The prompt instructs Devin to work in `namohkwan/superset`, implement the fix, run the relevant tests and lint checks, open a pull request titled `Fix #<issue_number>`, and report `{"pr_url": ..., "result": "pass|fail"}` through `structured_output`. A terminal session reporting `pass` marks the run succeeded; anything else marks it failed.
 
 ## Tests
 
@@ -183,4 +185,4 @@ The prompt instructs Devin to work in `namohkwan/superset`, implement the fix, r
 pytest
 ```
 
-The suite mirrors `app/` and mocks both external APIs: orchestration call order and persistence (`test_orchestrator.py`), adapter request shape and response parsing (`test_devin_client.py`, `test_github_client.py`), store CRUD (`test_store.py`), fail-fast configuration (`test_config.py`), webhook HMAC and label filtering plus dashboard rendering (`test_webhook.py`), and the CLI trigger mode (`test_cli.py`).
+The suite mirrors `app/` and stubs both external APIs at the transport boundary: orchestration call order and persistence (`test_orchestrator.py`), adapter request shape and response parsing (`test_devin_client.py`, `test_github_client.py`), store CRUD (`test_store.py`), fail-fast configuration (`test_config.py`), webhook HMAC and label filtering plus dashboard rendering (`test_webhook.py`), and the CLI trigger mode (`test_cli.py`).
