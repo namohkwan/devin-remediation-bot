@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Devin Remediation Bot — Status</title>
+  <meta http-equiv="refresh" content="30" />
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           margin: 2rem auto; max-width: 70rem; padding: 0 1rem; line-height: 1.5; }
+    h1 { margin-bottom: 0.25rem; }
+    .subtitle { color: #6b7280; margin-top: 0; }
+    .cards { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1.5rem 0; }
+    .card { border: 1px solid #d1d5db; border-radius: 0.5rem; padding: 0.75rem 1.25rem; min-width: 8rem; }
+    .card .value { font-size: 1.75rem; font-weight: 600; }
+    .card .label { text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; color: #6b7280; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border-bottom: 1px solid #e5e7eb; padding: 0.5rem 0.6rem; text-align: left; vertical-align: top; font-size: 0.9rem; }
+    th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; }
+    .badge { border-radius: 999px; padding: 0.1rem 0.6rem; font-size: 0.75rem; font-weight: 600; }
+    .badge.pending { background: #e5e7eb; color: #374151; }
+    .badge.running { background: #dbeafe; color: #1d4ed8; }
+    .badge.succeeded { background: #dcfce7; color: #166534; }
+    .badge.failed { background: #fee2e2; color: #b91c1c; }
+    .empty { color: #6b7280; font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>Devin Remediation Bot</h1>
+  <p class="subtitle">Target repository: <strong>{{ target_repo }}</strong></p>
+
+  <div class="cards">
+    <div class="card"><div class="value">{{ report.total }}</div><div class="label">Total runs</div></div>
+    {% for name, count in report.counts.items() %}
+    <div class="card"><div class="value">{{ count }}</div><div class="label">{{ name }}</div></div>
+    {% endfor %}
+  </div>
+
+  {% if report.runs %}
+  <table>
+    <thead>
+      <tr>
+        <th>Issue</th><th>Title</th><th>Trigger</th><th>Status</th>
+        <th>Devin status</th><th>Session</th><th>Pull request</th><th>Updated</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for run in report.runs %}
+      <tr>
+        <td>#{{ run.issue_number }}</td>
+        <td>{{ run.issue_title }}</td>
+        <td>{{ run.trigger }}</td>
+        <td><span class="badge {{ run.status }}">{{ run.status }}</span></td>
+        <td>{{ run.devin_status or "—" }}</td>
+        <td>
+          {% if run.session_url %}<a href="{{ run.session_url }}">{{ run.session_id }}</a>
+          {% else %}{{ run.session_id or "—" }}{% endif %}
+        </td>
+        <td>{% if run.pr_url %}<a href="{{ run.pr_url }}">{{ run.pr_url }}</a>{% else %}—{% endif %}</td>
+        <td>{{ run.updated_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No remediation runs recorded yet.</p>
+  {% endif %}
+</body>
+</html>

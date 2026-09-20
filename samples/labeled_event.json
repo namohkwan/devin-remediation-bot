@@ -1,0 +1,13 @@
+{
+  "action": "labeled",
+  "issue": {
+    "number": 101,
+    "title": "Dashboard chart fails to render when the time range is empty",
+    "body": "Opening a dashboard without a saved time range raises a TypeError in the chart data pipeline and the panel stays blank.\n\nSteps to reproduce:\n1. Create a chart without a time range filter.\n2. Add it to a dashboard and reload the page.\n\nExpected: the chart renders with the default time range.",
+    "html_url": "https://github.com/namohkwan/superset/issues/101",
+    "labels": [{ "name": "bug" }, { "name": "devin-fix" }]
+  },
+  "label": { "name": "devin-fix" },
+  "repository": { "full_name": "namohkwan/superset" },
+  "sender": { "login": "namohkwan" }
+}
