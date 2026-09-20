@@ -4,6 +4,7 @@ Usage:
     python -m app.cli run --issue 123
     python -m app.cli simulate --event samples/labeled_event.json
     python -m app.cli status
+    python -m app.cli watch --interval 15
 """
 
 from __future__ import annotations
@@ -12,7 +13,9 @@ import argparse
 import json
 import logging
 import sys
+import time
 from pathlib import Path
+from typing import Callable, Optional
 
 from app.config import ConfigurationError, get_settings
 from app.core.orchestrator import Orchestrator, build_orchestrator
@@ -43,6 +46,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Poll Devin for in-flight sessions before printing",
     )
+
+    watch_parser = subparsers.add_parser(
+        "watch", help="Continuously poll Devin and print one status line per update"
+    )
+    watch_parser.add_argument(
+        "--interval", type=float, default=15.0, help="Seconds between polls"
+    )
+    watch_parser.add_argument(
+        "--issue", type=int, default=None, help="Only watch a single issue number"
+    )
     return parser
 
 
@@ -61,6 +74,47 @@ def simulate_event(orchestrator: Orchestrator, event_path: Path, trigger_label: 
         print(json.dumps({"status": "ignored", "action": action, "label": label_name}, indent=2))
         return 0
     return run_issue(orchestrator, int(issue_number), trigger="simulation")
+
+
+def _watch_line(run: dict) -> str:
+    parts = [
+        f"#{run['issue_number']}",
+        run["status"],
+        f"devin={run.get('devin_status') or '-'}",
+    ]
+    if run.get("pr_url"):
+        parts.append(run["pr_url"])
+    if run.get("error"):
+        parts.append(f"error={run['error']}")
+    return "  ".join(parts)
+
+
+def watch_runs(
+    orchestrator: Orchestrator,
+    interval: float,
+    issue_number: Optional[int] = None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> int:
+    """Poll until every watched run reaches a terminal state, printing changes."""
+    last: dict[int, str] = {}
+    while True:
+        orchestrator.refresh_open_runs()
+        runs = [
+            serialize_run(run)
+            for run in orchestrator.list_runs()
+            if issue_number is None or run.issue_number == issue_number
+        ]
+        if not runs:
+            print("No runs to watch.")
+            return 0
+        for run in runs:
+            line = _watch_line(run)
+            if last.get(run["id"]) != line:
+                print(f"{time.strftime('%H:%M:%S')}  {line}", flush=True)
+                last[run["id"]] = line
+        if all(run["status"] in {"succeeded", "failed"} for run in runs):
+            return 0 if all(run["status"] == "succeeded" for run in runs) else 1
+        sleep(interval)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -85,6 +139,12 @@ def main(argv: list[str] | None = None) -> int:
         report = build_dashboard_report(orchestrator.list_runs())
         print(json.dumps(report, indent=2))
         return 0
+    if args.command == "watch":
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        try:
+            return watch_runs(orchestrator, args.interval, args.issue)
+        except KeyboardInterrupt:
+            return 0
     return 2
 
 

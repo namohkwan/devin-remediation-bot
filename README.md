@@ -120,9 +120,15 @@ python -m app.cli status
 
 # Poll Devin for in-flight sessions first, then print
 python -m app.cli status --refresh
+
+# Follow progress in the terminal until every run reaches a terminal state
+python -m app.cli watch --interval 15
+python -m app.cli watch --issue 1
 ```
 
-`run` returns as soon as the Devin session is created, printing the persisted run with its `session_id` and session URL. The outcome (`pr_url`, `result`) arrives later: re-run `status --refresh`, or open `/status`, where the background poller updates runs automatically.
+`run` returns as soon as the Devin session is created, printing the persisted run with its `session_id` and session URL. The outcome (`pr_url`, `result`) arrives later: re-run `status --refresh`, follow it live with `watch`, or open `/status`, where the background poller updates runs automatically.
+
+`watch` polls on the given interval and prints a timestamped line whenever a run changes, exiting once all watched runs have succeeded or failed (exit code 1 if any failed).
 
 ## Webhook mode
 

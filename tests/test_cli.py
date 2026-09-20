@@ -80,6 +80,32 @@ def test_status_command_prints_report(monkeypatch, capsys, store) -> None:
     assert report["counts"]["running"] == 1
 
 
+def test_watch_command_prints_until_terminal(monkeypatch, capsys, store) -> None:
+    devin_client = FakeDevinClient(
+        poll_session=DevinSession(
+            session_id="devin-session-1",
+            status_enum="finished",
+            structured_output={
+                "pr_url": "https://github.com/namohkwan/superset/pull/7",
+                "result": "pass",
+            },
+        )
+    )
+    orchestrator = Orchestrator(
+        FakeGitHubClient(), devin_client, store, TEST_ENV["TARGET_REPO"]
+    )
+    orchestrator.run_for_issue(101)
+    capsys.readouterr()
+
+    exit_code = cli.watch_runs(orchestrator, interval=0, sleep=lambda _: None)
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "#101" in out
+    assert "succeeded" in out
+    assert "/pull/7" in out
+
+
 def test_status_refresh_polls_devin(monkeypatch, capsys, store) -> None:
     devin_client = FakeDevinClient(
         poll_session=DevinSession(
