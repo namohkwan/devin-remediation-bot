@@ -83,6 +83,23 @@ def test_structured_output_given_as_json_string_is_parsed() -> None:
     assert session.structured_output == {"pr_url": "u", "result": "fail"}
 
 
+def test_pull_request_url_is_extracted_from_session_payload() -> None:
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            json={
+                "session_id": "s1",
+                "status_enum": "blocked",
+                "pull_requests": [{"url": "https://github.com/o/r/pull/2"}],
+            },
+        )
+    )
+
+    session = make_client(transport).get_session("s1")
+
+    assert session.pull_request_url == "https://github.com/o/r/pull/2"
+
+
 def test_create_session_raises_on_error_status() -> None:
     transport = httpx.MockTransport(lambda request: httpx.Response(401, json={}))
 

@@ -105,7 +105,7 @@ def test_refresh_run_marks_failure_when_result_is_fail(
     devin_client = FakeDevinClient(
         poll_session=DevinSession(
             session_id="devin-session-1",
-            status_enum="blocked",
+            status_enum="finished",
             structured_output={"pr_url": None, "result": "fail"},
         )
     )
@@ -115,6 +115,26 @@ def test_refresh_run_marks_failure_when_result_is_fail(
 
     assert refreshed.status is RunStatus.FAILED
     assert refreshed.result == "fail"
+
+
+def test_refresh_run_keeps_blocked_sessions_open_and_records_pr(
+    github_client: FakeGitHubClient, store: SQLiteRemediationStore
+) -> None:
+    devin_client = FakeDevinClient(
+        poll_session=DevinSession(
+            session_id="devin-session-1",
+            status_enum="blocked",
+            pull_request_url="https://github.com/namohkwan/superset/pull/2",
+        )
+    )
+    orchestrator = make_orchestrator(github_client, devin_client, store)
+
+    refreshed = orchestrator.refresh_run(orchestrator.run_for_issue(101))
+
+    assert refreshed.status is RunStatus.AWAITING_INPUT
+    assert refreshed.status.is_terminal is False
+    assert refreshed.pr_url.endswith("/pull/2")
+    assert refreshed.result is None
 
 
 def test_refresh_open_runs_skips_terminal_runs(

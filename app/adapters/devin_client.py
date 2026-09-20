@@ -21,6 +21,25 @@ class DevinSession:
     status_enum: str | None = None
     url: str | None = None
     structured_output: dict[str, Any] | None = None
+    pull_request_url: str | None = None
+
+    @staticmethod
+    def _extract_pull_request_url(payload: dict[str, Any]) -> str | None:
+        candidates: list[Any] = []
+        pull_request = payload.get("pull_request")
+        if pull_request is not None:
+            candidates.append(pull_request)
+        pull_requests = payload.get("pull_requests")
+        if isinstance(pull_requests, list):
+            candidates.extend(pull_requests)
+        for candidate in candidates:
+            if isinstance(candidate, str) and candidate:
+                return candidate
+            if isinstance(candidate, dict):
+                url = candidate.get("url") or candidate.get("html_url")
+                if isinstance(url, str) and url:
+                    return url
+        return None
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "DevinSession":
@@ -37,6 +56,7 @@ class DevinSession:
             status_enum=payload.get("status_enum") or payload.get("status"),
             url=payload.get("url"),
             structured_output=structured_output,
+            pull_request_url=cls._extract_pull_request_url(payload),
         )
 
 

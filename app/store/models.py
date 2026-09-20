@@ -12,6 +12,7 @@ class RunStatus(str, Enum):
 
     PENDING = "pending"
     RUNNING = "running"
+    AWAITING_INPUT = "awaiting_input"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
 
@@ -20,7 +21,10 @@ class RunStatus(str, Enum):
         return self in (RunStatus.SUCCEEDED, RunStatus.FAILED)
 
 
-TERMINAL_DEVIN_STATUSES = {"blocked", "stopped", "finished", "expired", "suspended"}
+TERMINAL_DEVIN_STATUSES = {"stopped", "finished", "expired", "suspended"}
+
+# Devin pauses and waits for a reply; the run is still alive.
+AWAITING_INPUT_DEVIN_STATUSES = {"blocked"}
 
 
 def utcnow() -> datetime:

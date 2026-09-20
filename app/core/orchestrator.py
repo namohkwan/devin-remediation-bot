@@ -14,7 +14,12 @@ from app.adapters.devin_client import DevinClient, DevinSession
 from app.adapters.github_client import GitHubClient
 from app.config import Settings, get_settings
 from app.core.prompts import build_remediation_prompt
-from app.store.models import TERMINAL_DEVIN_STATUSES, RemediationRun, RunStatus
+from app.store.models import (
+    AWAITING_INPUT_DEVIN_STATUSES,
+    TERMINAL_DEVIN_STATUSES,
+    RemediationRun,
+    RunStatus,
+)
 from app.store.sqlite_store import RemediationStore, SQLiteRemediationStore
 
 logger = logging.getLogger(__name__)
@@ -89,11 +94,13 @@ class Orchestrator:
     @staticmethod
     def _apply_session(run: RemediationRun, session: DevinSession) -> RemediationRun:
         output = session.structured_output or {}
-        pr_url = output.get("pr_url") or run.pr_url
+        pr_url = output.get("pr_url") or session.pull_request_url or run.pr_url
         result = output.get("result") or run.result
         status = run.status
         if session.status_enum in TERMINAL_DEVIN_STATUSES:
             status = RunStatus.SUCCEEDED if result == "pass" else RunStatus.FAILED
+        elif session.status_enum in AWAITING_INPUT_DEVIN_STATUSES:
+            status = RunStatus.AWAITING_INPUT
         elif session.status_enum:
             status = RunStatus.RUNNING
         return run.touched(
