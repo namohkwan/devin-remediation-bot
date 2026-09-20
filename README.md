@@ -9,6 +9,13 @@ A labelled issue becomes a Devin session, the session becomes a pull request, an
 | Manual / simulation | `python -m app.cli run --issue <n>` | Driving one issue at a time, and rehearsing webhook payloads offline |
 | Webhook | `POST /webhook` | Production trigger: an `issues` event carrying the `devin-fix` label |
 
+Issues remediated with this bot so far, both merged into the fork:
+
+| Issue | Trigger | Result |
+| --- | --- | --- |
+| [#1 apispec upper bound](https://github.com/namohkwan/superset/issues/1) | manual CLI | [PR #2](https://github.com/namohkwan/superset/pull/2) |
+| [#3 stale comment in `format_timedelta`](https://github.com/namohkwan/superset/issues/3) | `devin-fix` label → webhook | [PR #4](https://github.com/namohkwan/superset/pull/4) |
+
 ## Architecture
 
 ```
@@ -106,41 +113,50 @@ Missing or blank required variables abort startup with an explicit message:
 Configuration error: Missing required environment variable(s): DEVIN_API_KEY, ...
 ```
 
-## Manual mode
+## Running the workflow
+
+Everything below assumes the virtualenv is active and `.env` is filled in.
+
+### 1. Remediate one issue directly
 
 ```bash
-# Remediate a single issue end to end
-python -m app.cli run --issue 101
-
-# Replay a stored GitHub event payload without exposing a public endpoint
-python -m app.cli simulate --event samples/labeled_event.json
-
-# Inspect all recorded runs as JSON
-python -m app.cli status
-
-# Poll Devin for in-flight sessions first, then print
-python -m app.cli status --refresh
-
-# Follow progress in the terminal until every run reaches a terminal state
-python -m app.cli watch --interval 15
-python -m app.cli watch --issue 1
+python -m app.cli run --issue 3
 ```
 
-`run` returns as soon as the Devin session is created, printing the persisted run with its `session_id` and session URL. The outcome (`pr_url`, `result`) arrives later: re-run `status --refresh`, follow it live with `watch`, or open `/status`, where the background poller updates runs automatically.
+Fetches the issue from GitHub, starts a Devin session for it, and records the run. The command returns as soon as the session exists — Devin keeps working in the background — so it prints the `session_id` and session URL, not the final result.
 
-`watch` polls on the given interval and prints a timestamped line whenever a run changes, exiting once all watched runs have succeeded or failed (exit code 1 if any failed).
+### 2. Simulate a webhook delivery (no public URL needed)
+
+```bash
+python -m app.cli simulate --event samples/labeled_event.json
+```
+
+This replays a saved GitHub `issues` event JSON file through the same label filter and orchestration path a real delivery takes, so the automatic trigger can be exercised without registering a webhook or exposing the server to the internet. "Simulated" refers to the delivery only: a payload that passes the filter starts a real Devin session against the real issue number in the file. A payload whose `action` is not `labeled`, or whose label is not `devin-fix`, prints `{"status": "ignored"}` and does nothing — which is what makes this useful for checking the filter itself. Edit `samples/labeled_event.json` (or drop in a payload copied from a real GitHub delivery) to try other cases.
+
+### 3. Follow progress
+
+```bash
+python -m app.cli watch --issue 3     # live, one line per change, exits when done
+python -m app.cli watch --interval 60 # all runs, slower polling
+python -m app.cli status              # snapshot of what is stored
+python -m app.cli status --refresh    # poll Devin first, then print
+```
+
+`watch` prints a timestamped line only when something changes, and exits once every watched run has succeeded or failed (exit code 1 if any failed). The `/status` dashboard shows the same data in a browser and refreshes itself.
 
 Run statuses are `pending`, `running`, `awaiting_input` (Devin is blocked on a reply — the session is alive and its pull request, if any, is already recorded), `succeeded`, and `failed`.
 
 ## Webhook mode
 
+The automatic trigger: labelling an issue in GitHub starts the remediation, with no terminal involved.
+
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Register the webhook in `namohkwan/superset` → **Settings → Webhooks → Add webhook**:
+GitHub must be able to reach the server. For a local run, expose port 8000 with a tunnel (`cloudflared tunnel --url http://localhost:8000`) and use the URL it prints. Then register the webhook in `namohkwan/superset` → **Settings → Webhooks → Add webhook**:
 
-- **Payload URL**: `https://<your-host>/webhook` (for local testing, expose port 8000 with a tunnel such as `cloudflared tunnel --url http://localhost:8000`)
+- **Payload URL**: `https://<your-host>/webhook`
 - **Content type**: `application/json`
 - **Secret**: the same value as `GITHUB_WEBHOOK_SECRET`
 - **Events**: *Let me select individual events* → **Issues**
